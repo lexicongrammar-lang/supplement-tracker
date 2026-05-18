@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>保健食品補貨提醒</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f5f5f3;color:#1a1a1a;min-height:100vh;padding:1.5rem 1rem}
+h1{font-size:18px;font-weight:500;margin-bottom:1.5rem}
+.topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;gap:12px;flex-wrap:wrap}
+.threshold-row{display:flex;align-items:center;gap:8px;font-size:13px;color:#666}
+.threshold-row input{width:52px;padding:6px 8px;border:0.5px solid #ccc;border-radius:8px;font-size:14px;text-align:center}
+.btn{padding:8px 16px;border-radius:8px;border:0.5px solid #ccc;background:#fff;font-size:14px;cursor:pointer;color:#1a1a1a}
+.btn:hover{background:#f0f0ee}
+.btn-primary{background:#1a1a1a;color:#fff;border:none}
+.btn-primary:hover{background:#333}
+.btn-icon{padding:6px 10px;border-radius:8px;border:0.5px solid #ccc;background:#fff;cursor:pointer;font-size:16px;color:#555}
+.btn-icon:hover{background:#f0f0ee}
+.btn-danger{color:#c0392b}
+.banner{background:#fdecea;border:0.5px solid #e8b4b0;border-radius:8px;padding:10px 14px;margin-bottom:1rem;font-size:13px;color:#c0392b}
+.cards{display:flex;flex-direction:column;gap:12px}
+.card{background:#fff;border:0.5px solid #ddd;border-radius:12px;padding:1rem 1.25rem}
+.card-top{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
+.card-info{flex:1;min-width:0}
+.card-title{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px}
+.name{font-size:15px;font-weight:500}
+.badge{font-size:12px;padding:2px 10px;border-radius:99px;font-weight:500}
+.badge-ok{background:#eafbe5;color:#2e7d32}
+.badge-warn{background:#fff8e1;color:#b36200}
+.badge-danger{background:#fdecea;color:#c0392b}
+.meta{font-size:13px;color:#666;display:flex;gap:14px;flex-wrap:wrap}
+.meta b{color:#1a1a1a}
+.adj-note{color:#2e7d32}
+.adj-note.neg{color:#c0392b}
+.progress{height:4px;background:#eee;border-radius:2px;overflow:hidden;margin-top:8px}
+.progress-bar{height:100%;border-radius:2px;transition:width .4s}
+.bar-ok{background:#4caf50}
+.bar-warn{background:#ffa000}
+.bar-danger{background:#e53935}
+.actions{display:flex;gap:6px;flex-shrink:0}
+.empty{text-align:center;padding:3rem 0;font-size:14px;color:#aaa}
+/* modal */
+.overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.35);align-items:center;justify-content:center;z-index:100;padding:16px}
+.overlay.open{display:flex}
+.modal{background:#fff;border-radius:12px;padding:1.5rem;width:100%;max-width:380px;border:0.5px solid #ccc}
+.modal h3{font-size:16px;font-weight:500;margin-bottom:1.25rem}
+.field{margin-bottom:1rem}
+.field label{display:block;font-size:13px;color:#666;margin-bottom:4px}
+.field input{width:100%;padding:8px 10px;border:0.5px solid #ccc;border-radius:8px;font-size:14px}
+.field input:focus{outline:none;border-color:#888}
+.hint{font-size:12px;color:#888;margin-top:5px}
+.modal-footer{display:flex;gap:8px;justify-content:flex-end;margin-top:1.25rem}
+</style>
+</head>
+<body>
+<h1>💊 保健食品補貨提醒</h1>
+<div class="topbar">
+  <div class="threshold-row">
+    <span>提醒門檻</span>
+    <input type="number" id="threshold" min="1" max="60" value="14" onchange="saveThreshold()">
+    <span>天</span>
+  </div>
+  <button class="btn btn-primary" onclick="openModal('add')">＋ 新增品項</button>
+</div>
+<div id="banner" class="banner" style="display:none"></div>
+<div id="cards" class="cards"></div>
+
+<!-- modal -->
+<div class="overlay" id="overlay" onclick="overlayClick(event)">
+  <div class="modal" id="modal-box">
+    <h3 id="modal-title"></h3>
+    <div id="modal-body"></div>
+  </div>
+</div>
+
+<script>
+const SKEY = 'supp-tracker-v2';
+let data = {items:[], alertDays:14};
+let editId = null;
+
+function load(){
+  try{ const d=JSON.parse(localStorage.getItem(SKEY)); if(d){data=d;} }catch{}
+  document.getElementById('threshold').value = data.alertDays||14;
+}
+function save(){ localStorage.setItem(SKEY, JSON.stringify(data)); }
+function saveThreshold(){ data.alertDays=Number(document.getElementById('threshold').value)||14; save(); render(); }
+
+function daysSince(dateStr){ return Math.floor((Date.now()-new Date(dateStr).getTime())/86400000); }
+function calcRem(item){
+  if(!item.openDate||!item.dailyDose||!item.totalPills) return null;
+  const used = daysSince(item.openDate) * item.dailyDose;
+  return Math.max(0, item.totalPills - used + (item.adjustment||0));
+}
+function calcDays(item){
+  const r=calcRem(item); if(r===null) return null;
+  return Math.floor(r/item.dailyDose);
+}
+
+function render(){
+  const th = data.alertDays||14;
+  const sorted = [...data.items].sort((a,b)=>(calcDays(a)??999)-(calcDays(b)??999));
+  const urgent = sorted.filter(i=>{const d=calcDays(i);return d!==null&&d<=th;});
+  const banner = document.getElementById('banner');
+  if(urgent.length){
+    banner.style.display='block';
+    banner.textContent='⚠️ '+urgent.map(i=>i.name).join('、')+' 需要補貨';
+  } else { banner.style.display='none'; }
+
+  const el = document.getElementById('cards');
+  if(!sorted.length){ el.innerHTML='<div class="empty">尚無品項，點「新增品項」開始追蹤</div>'; return; }
+
+  el.innerHTML = sorted.map(item=>{
+    const days=calcDays(item), rem=calcRem(item), adj=item.adjustment||0;
+    const badgeCls = days===null?'':days<=th?'badge-danger':days<=th*1.8?'badge-warn':'badge-ok';
+    const badgeTxt = days===null?'':'需補貨|快用完|庫存充足'.split('|')[days<=th?0:days<=th*1.8?1:2];
+    const barPct = days===null?0:Math.min(100,Math.round(days/(th*4)*100));
+    const barCls = days<=th?'bar-danger':days<=th*1.8?'bar-warn':'bar-ok';
+    const adjHtml = adj!==0?`<span class="adj-note${adj<0?' neg':''}">校正 ${adj>0?'+':''}${adj} 粒</span>`:'';
+    return `<div class="card">
+      <div class="card-top">
+        <div class="card-info">
+          <div class="card-title">
+            <span class="name">${item.name}</span>
+            ${days!==null?`<span class="badge ${badgeCls}">${badgeTxt}</span>`:''}
+          </div>
+          <div class="meta">
+            <span>剩餘 <b>${days??'—'}</b> 天</span>
+            <span>約 <b>${rem!==null?Math.round(rem):'—'}</b> 粒</span>
+            <span>每日 ${item.dailyDose} 粒</span>
+            ${adjHtml}
+          </div>
+          <div class="progress"><div class="progress-bar ${barCls}" style="width:${barPct}%"></div></div>
+        </div>
+        <div class="actions">
+          <button class="btn-icon" title="加入行事曆" onclick="exportICS('${item.id}')">📅</button>
+          <button class="btn-icon" title="手動校正" onclick="openModal('adjust','${item.id}')">⚙</button>
+          <button class="btn-icon" title="補瓶" onclick="openModal('refill','${item.id}')">🔄</button>
+          <button class="btn-icon" title="編輯" onclick="openModal('edit','${item.id}')">✏️</button>
+          <button class="btn-icon btn-danger" title="刪除" onclick="del('${item.id}')">🗑</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function del(id){ if(confirm('確定刪除？')){ data.items=data.items.filter(i=>i.id!==id); save(); render(); } }
+
+function openModal(type, id){
+  editId=id||null;
+  const item = id ? data.items.find(i=>i.id===id) : null;
+  const ov=document.getElementById('overlay'); ov.classList.add('open');
+  const title=document.getElementById('modal-title');
+  const body=document.getElementById('modal-body');
+  const today=new Date().toISOString().split('T')[0];
+
+  if(type==='add'||type==='edit'){
+    title.textContent=type==='add'?'新增品項':'編輯品項';
+    body.innerHTML=`
+      <div class="field"><label>名稱</label><input id="f-name" value="${item?.name||''}" placeholder="例：魚油 Omega-3"></div>
+      <div class="field"><label>總粒數（整瓶）</label><input id="f-total" type="number" value="${item?.totalPills||''}" placeholder="例：180"></div>
+      <div class="field"><label>每日用量（粒）</label><input id="f-dose" type="number" value="${item?.dailyDose||''}" placeholder="例：2"></div>
+      <div class="field"><label>開瓶日期</label><input id="f-date" type="date" value="${item?.openDate||today}"></div>
+      <div class="modal-footer">
+        <button class="btn" onclick="closeModal()">取消</button>
+        <button class="btn btn-primary" onclick="saveItem('${type}')">儲存</button>
+      </div>`;
+  } else if(type==='adjust'){
+    title.textContent='手動校正｜'+item.name;
+    body.innerHTML=`
+      <p style="font-size:13px;color:#666;margin-bottom:1rem">忘吃幾天請輸入正數，例如忘吃 2 天輸入 <b>+${item.dailyDose*2}</b>。</p>
+      <div class="field">
+        <label>調整粒數（正數加回，負數扣除）</label>
+        <input id="f-adj" type="number" placeholder="例：+${item.dailyDose}">
+        <div class="hint">目前累計校正：${item.adjustment||0} 粒　每日用量：${item.dailyDose} 粒</div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn" onclick="closeModal()">取消</button>
+        <button class="btn btn-primary" onclick="applyAdj()">套用校正</button>
+      </div>`;
+  } else if(type==='refill'){
+    title.textContent='補瓶｜'+item.name;
+    body.innerHTML=`
+      <p style="font-size:13px;color:#666;margin-bottom:1rem">確認補瓶後會重設開瓶日期，並清除所有手動校正紀錄。</p>
+      <div class="field"><label>新開瓶日期</label><input id="f-refill" type="date" value="${today}"></div>
+      <div class="modal-footer">
+        <button class="btn" onclick="closeModal()">取消</button>
+        <button class="btn btn-primary" onclick="doRefill()">確認補瓶</button>
+      </div>`;
+  }
+}
+
+function closeModal(){ document.getElementById('overlay').classList.remove('open'); }
+function overlayClick(e){ if(e.target===document.getElementById('overlay')) closeModal(); }
+
+function saveItem(type){
+  const name=document.getElementById('f-name').value.trim();
+  const total=Number(document.getElementById('f-total').value);
+  const dose=Number(document.getElementById('f-dose').value);
+  const date=document.getElementById('f-date').value;
+  if(!name||!total||!dose||!date){ alert('請填寫所有欄位'); return; }
+  if(type==='add'){
+    data.items.push({id:Date.now().toString(), name, totalPills:total, dailyDose:dose, openDate:date, adjustment:0});
+  } else {
+    const i=data.items.find(x=>x.id===editId);
+    if(i){ i.name=name; i.totalPills=total; i.dailyDose=dose; i.openDate=date; }
+  }
+  save(); render(); closeModal();
+}
+
+function applyAdj(){
+  const val=Number(document.getElementById('f-adj').value);
+  if(isNaN(val)||val===0){ alert('請輸入非零數字'); return; }
+  const i=data.items.find(x=>x.id===editId);
+  if(i){ i.adjustment=(i.adjustment||0)+val; }
+  save(); render(); closeModal();
+}
+
+function doRefill(){
+  const date=document.getElementById('f-refill').value;
+  if(!date){ alert('請選擇日期'); return; }
+  const i=data.items.find(x=>x.id===editId);
+  if(i){ i.openDate=date; i.adjustment=0; }
+  save(); render(); closeModal();
+}
+
+function exportICS(id){
+  const item = data.items.find(i=>i.id===id);
+  const days = calcDays(item);
+  if(days===null){ alert('請先完整填寫品項資料'); return; }
+  const th = data.alertDays||14;
+  const daysUntil = Math.max(0, days - th);
+  const remind = new Date();
+  remind.setDate(remind.getDate() + daysUntil);
+  const fmt = d => d.toISOString().replace(/[-:]/g,'').split('.')[0]+'Z';
+  const start = fmt(remind);
+  const end = fmt(new Date(remind.getTime()+3600000));
+  const ics = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//補貨提醒//TW',
+    'BEGIN:VEVENT',
+    `UID:${id}-${Date.now()}@supp-tracker`,
+    `DTSTART:${start}`,
+    `DTEND:${end}`,
+    `SUMMARY:補貨提醒：${item.name}`,
+    `DESCRIPTION:${item.name} 剩餘約 ${th} 天份，記得訂購補貨。`,
+    'BEGIN:VALARM',
+    'TRIGGER:-PT0M',
+    'ACTION:DISPLAY',
+    `DESCRIPTION:補貨提醒：${item.name}`,
+    'END:VALARM',
+    'END:VEVENT',
+    'END:VCALENDAR'
+  ].join('\r\n');
+  const blob = new Blob([ics],{type:'text/calendar'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `補貨提醒-${item.name}.ics`;
+  a.click();
+}
+
+load(); render();
+</script>
+</body>
+</html>
