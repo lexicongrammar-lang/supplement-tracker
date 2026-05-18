@@ -64,7 +64,11 @@ h1{font-size:18px;font-weight:500;margin-bottom:1.5rem}
     <input type="number" id="threshold" min="1" max="60" value="14" onchange="saveThreshold()">
     <span>天</span>
   </div>
-  <button class="btn btn-primary" onclick="openModal('add')">＋ 新增品項</button>
+  <div style="display:flex;gap:8px">
+    <button class="btn" onclick="exportJSON()">📤 匯出</button>
+    <label class="btn" style="cursor:pointer">📥 匯入<input type="file" accept=".json" onchange="importJSON(event)" style="display:none"></label>
+    <button class="btn btn-primary" onclick="openModal('add')">＋ 新增品項</button>
+  </div>
 </div>
 <div id="banner" class="banner" style="display:none"></div>
 <div id="cards" class="cards"></div>
@@ -293,6 +297,29 @@ function exportICS(id){
   a.href=URL.createObjectURL(new Blob([ics],{type:'text/calendar'}));
   a.download=`補貨提醒-${item.name}.ics`;
   a.click();
+}
+
+function exportJSON(){
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}));
+  a.download='保健食品補貨提醒備份_'+new Date().toISOString().split('T')[0]+'.json';
+  a.click();
+}
+
+function importJSON(e){
+  const file=e.target.files[0]; if(!file) return;
+  const r=new FileReader();
+  r.onload=ev=>{
+    try{
+      const d=JSON.parse(ev.target.result);
+      if(!d.items) throw new Error();
+      if(!confirm(`匯入後將覆蓋目前所有資料（共 ${d.items.length} 項），確定繼續？`)) return;
+      data=d; save(); render();
+      document.getElementById('threshold').value=data.alertDays||14;
+    } catch{ alert('檔案格式錯誤，請使用本工具匯出的 JSON 檔案'); }
+  };
+  r.readAsText(file);
+  e.target.value='';
 }
 
 load(); render();
