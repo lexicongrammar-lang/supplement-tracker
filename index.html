@@ -11,7 +11,8 @@ h1{font-size:18px;font-weight:500;margin-bottom:1.5rem}
 .topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;gap:12px;flex-wrap:wrap}
 .threshold-row{display:flex;align-items:center;gap:8px;font-size:13px;color:#666}
 .threshold-row input{width:52px;padding:6px 8px;border:0.5px solid #ccc;border-radius:8px;font-size:14px;text-align:center}
-.btn{padding:8px 16px;border-radius:8px;border:0.5px solid #ccc;background:#fff;font-size:14px;cursor:pointer;color:#1a1a1a}
+.topbar-btns{display:flex;gap:8px;flex-wrap:wrap}
+.btn{padding:8px 14px;border-radius:8px;border:0.5px solid #ccc;background:#fff;font-size:14px;cursor:pointer;color:#1a1a1a}
 .btn:hover{background:#f0f0ee}
 .btn-primary{background:#1a1a1a;color:#fff;border:none}
 .btn-primary:hover{background:#333}
@@ -31,10 +32,8 @@ h1{font-size:18px;font-weight:500;margin-bottom:1.5rem}
 .badge-danger{background:#fdecea;color:#c0392b}
 .meta{font-size:13px;color:#666;display:flex;gap:14px;flex-wrap:wrap}
 .meta b{color:#1a1a1a}
-.meta .stock{background:#f0f0ee;border-radius:6px;padding:1px 7px;font-size:12px;color:#555}
-.meta .stock.low{background:#fff8e1;color:#b36200}
-.adj-note{color:#2e7d32}
-.adj-note.neg{color:#c0392b}
+.stock{background:#f0f0ee;border-radius:6px;padding:1px 7px;font-size:12px;color:#555}
+.stock.low{background:#fff8e1;color:#b36200}
 .progress{height:4px;background:#eee;border-radius:2px;overflow:hidden;margin-top:8px}
 .progress-bar{height:100%;border-radius:2px;transition:width .4s}
 .bar-ok{background:#4caf50}
@@ -53,7 +52,7 @@ h1{font-size:18px;font-weight:500;margin-bottom:1.5rem}
 .field-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .hint{font-size:12px;color:#888;margin-top:5px}
 .modal-footer{display:flex;gap:8px;justify-content:flex-end;margin-top:1.25rem}
-.divider{border:none;border-top:0.5px solid #eee;margin:1rem 0}
+hr{border:none;border-top:0.5px solid #eee;margin:1rem 0}
 </style>
 </head>
 <body>
@@ -64,7 +63,7 @@ h1{font-size:18px;font-weight:500;margin-bottom:1.5rem}
     <input type="number" id="threshold" min="1" max="60" value="14" onchange="saveThreshold()">
     <span>天</span>
   </div>
-  <div style="display:flex;gap:8px">
+  <div class="topbar-btns">
     <button class="btn" onclick="exportJSON()">📤 匯出</button>
     <label class="btn" style="cursor:pointer">📥 匯入<input type="file" accept=".json" onchange="importJSON(event)" style="display:none"></label>
     <button class="btn btn-primary" onclick="openModal('add')">＋ 新增品項</button>
@@ -74,19 +73,19 @@ h1{font-size:18px;font-weight:500;margin-bottom:1.5rem}
 <div id="cards" class="cards"></div>
 
 <div class="overlay" id="overlay" onclick="overlayClick(event)">
-  <div class="modal" id="modal-box">
+  <div class="modal">
     <h3 id="modal-title"></h3>
     <div id="modal-body"></div>
   </div>
 </div>
 
 <script>
-const SKEY = 'supp-tracker-v3';
-let data = {items:[], alertDays:14};
-let editId = null;
+var SKEY = 'supp-tracker-v3';
+var data = {items:[], alertDays:14};
+var editId = null;
 
 function load(){
-  try{ const d=JSON.parse(localStorage.getItem(SKEY)); if(d) data=d; }catch{}
+  try{ var d=JSON.parse(localStorage.getItem(SKEY)); if(d) data=d; }catch(e){}
   document.getElementById('threshold').value = data.alertDays||14;
 }
 function save(){ localStorage.setItem(SKEY, JSON.stringify(data)); }
@@ -96,136 +95,112 @@ function daysSince(dateStr){ return Math.floor((Date.now()-new Date(dateStr).get
 
 function calcCurrentRem(item){
   if(!item.openDate||!item.dailyDose||!item.totalPills) return null;
-  const used = daysSince(item.openDate) * item.dailyDose;
+  var used = daysSince(item.openDate) * item.dailyDose;
   return Math.max(0, item.totalPills - used + (item.adjustment||0));
 }
-
 function calcTotalDays(item){
-  const curRem = calcCurrentRem(item);
-  if(curRem===null) return null;
-  const spareBottles = item.spareBottles||0;
-  const totalPills = curRem + spareBottles * item.totalPills;
-  return Math.floor(totalPills / item.dailyDose);
+  var cur = calcCurrentRem(item);
+  if(cur===null) return null;
+  var spare = item.spareBottles||0;
+  return Math.floor((cur + spare * item.totalPills) / item.dailyDose);
 }
-
 function calcCurrentDays(item){
-  const r = calcCurrentRem(item);
+  var r = calcCurrentRem(item);
   if(r===null) return null;
   return Math.floor(r/item.dailyDose);
 }
 
 function render(){
-  const th = data.alertDays||14;
-  const sorted = [...data.items].sort((a,b)=>(calcTotalDays(a)??999)-(calcTotalDays(b)??999));
-  const urgent = sorted.filter(i=>{ const d=calcTotalDays(i); return d!==null&&d<=th; });
+  var th = data.alertDays||14;
+  var sorted = data.items.slice().sort(function(a,b){ return (calcTotalDays(a)||999)-(calcTotalDays(b)||999); });
+  var urgent = sorted.filter(function(i){ var d=calcTotalDays(i); return d!==null&&d<=th; });
 
-  const banner=document.getElementById('banner');
+  var banner=document.getElementById('banner');
   if(urgent.length){
     banner.style.display='block';
-    banner.textContent='⚠️ '+urgent.map(i=>i.name).join('、')+' 需要補貨';
+    banner.textContent='⚠️ '+urgent.map(function(i){return i.name;}).join('、')+' 需要補貨';
   } else { banner.style.display='none'; }
 
-  const el=document.getElementById('cards');
+  var el=document.getElementById('cards');
   if(!sorted.length){ el.innerHTML='<div class="empty">尚無品項，點「新增品項」開始追蹤</div>'; return; }
 
-  el.innerHTML=sorted.map(item=>{
-    const totalDays=calcTotalDays(item);
-    const curDays=calcCurrentDays(item);
-    const spare=item.spareBottles||0;
-    const adj=item.adjustment||0;
-
-    const badgeCls=totalDays===null?'':totalDays<=th?'badge-danger':totalDays<=th*1.8?'badge-warn':'badge-ok';
-    const badgeTxt=totalDays===null?'':'需補貨|快用完|庫存充足'.split('|')[totalDays<=th?0:totalDays<=th*1.8?1:2];
-    const barPct=totalDays===null?0:Math.min(100,Math.round(totalDays/(th*4)*100));
-    const barCls=totalDays<=th?'bar-danger':totalDays<=th*1.8?'bar-warn':'bar-ok';
-    const adjHtml=adj!==0?`<span class="adj-note${adj<0?' neg':''}">校正 ${adj>0?'+':''}${adj}</span>`:'';
-    const stockHtml=`<span class="stock${spare<=1?' low':''}" title="備用瓶數">📦 備用 ${spare} 瓶</span>`;
-    const curDaysHtml=spare>0&&curDays!==null?`<span title="目前這瓶剩餘天數">這瓶 <b>${curDays}</b> 天</span>`:'';
-
-    return `<div class="card">
-      <div class="card-top">
-        <div class="card-info">
-          <div class="card-title">
-            <span class="name">${item.name}</span>
-            ${totalDays!==null?`<span class="badge ${badgeCls}">${badgeTxt}</span>`:''}
-          </div>
-          <div class="meta">
-            <span>合計 <b>${totalDays??'—'}</b> 天</span>
-            ${curDaysHtml}
-            <span>每日 ${item.dailyDose} 粒</span>
-            ${stockHtml}
-            ${adjHtml}
-          </div>
-          <div class="progress"><div class="progress-bar ${barCls}" style="width:${barPct}%"></div></div>
-        </div>
-        <div class="actions">
-          <button class="btn-icon" title="加入行事曆" onclick="exportICS('${item.id}')">📅</button>
-          <button class="btn-icon" title="手動校正" onclick="openModal('adjust','${item.id}')">⚙</button>
-          <button class="btn-icon" title="補瓶／更新庫存" onclick="openModal('refill','${item.id}')">🔄</button>
-          <button class="btn-icon" title="編輯" onclick="openModal('edit','${item.id}')">✏️</button>
-          <button class="btn-icon btn-danger" title="刪除" onclick="del('${item.id}')">🗑</button>
-        </div>
-      </div>
-    </div>`;
+  el.innerHTML=sorted.map(function(item){
+    var totalDays=calcTotalDays(item);
+    var curDays=calcCurrentDays(item);
+    var spare=item.spareBottles||0;
+    var adj=item.adjustment||0;
+    var badgeCls=totalDays===null?'':totalDays<=th?'badge-danger':totalDays<=th*1.8?'badge-warn':'badge-ok';
+    var badgeTxt=totalDays===null?'':['需補貨','快用完','庫存充足'][totalDays<=th?0:totalDays<=th*1.8?1:2];
+    var barPct=totalDays===null?0:Math.min(100,Math.round(totalDays/(th*4)*100));
+    var barCls=totalDays<=th?'bar-danger':totalDays<=th*1.8?'bar-warn':'bar-ok';
+    var adjHtml=adj!==0?'<span style="color:'+(adj>0?'#2e7d32':'#c0392b')+'">校正 '+(adj>0?'+':'')+adj+' 粒</span>':'';
+    var stockCls='stock'+(spare<=1?' low':'');
+    var curDaysHtml=spare>0&&curDays!==null?'<span>這瓶 <b>'+curDays+'</b> 天</span>':'';
+    return '<div class="card"><div class="card-top"><div class="card-info">'
+      +'<div class="card-title"><span class="name">'+item.name+'</span>'
+      +(totalDays!==null?'<span class="badge '+badgeCls+'">'+badgeTxt+'</span>':'')+'</div>'
+      +'<div class="meta">'
+      +'<span>合計 <b>'+(totalDays||'—')+'</b> 天</span>'
+      +curDaysHtml
+      +'<span>每日 '+item.dailyDose+' 粒</span>'
+      +'<span class="'+stockCls+'">📦 備用 '+spare+' 瓶</span>'
+      +adjHtml+'</div>'
+      +'<div class="progress"><div class="progress-bar '+barCls+'" style="width:'+barPct+'%"></div></div>'
+      +'</div>'
+      +'<div class="actions">'
+      +'<button class="btn-icon" title="加入行事曆" onclick="exportICS(\''+item.id+'\')">📅</button>'
+      +'<button class="btn-icon" title="手動校正" onclick="openModal(\'adjust\',\''+item.id+'\')">⚙</button>'
+      +'<button class="btn-icon" title="補瓶" onclick="openModal(\'refill\',\''+item.id+'\')">🔄</button>'
+      +'<button class="btn-icon" title="編輯" onclick="openModal(\'edit\',\''+item.id+'\')">✏️</button>'
+      +'<button class="btn-icon btn-danger" title="刪除" onclick="del(\''+item.id+'\')">🗑</button>'
+      +'</div></div></div>';
   }).join('');
 }
 
-function del(id){ if(confirm('確定刪除？')){ data.items=data.items.filter(i=>i.id!==id); save(); render(); } }
+function del(id){ if(confirm('確定刪除？')){ data.items=data.items.filter(function(i){return i.id!==id;}); save(); render(); } }
 
 function openModal(type, id){
   editId=id||null;
-  const item=id?data.items.find(i=>i.id===id):null;
+  var item=id?data.items.find(function(i){return i.id===id;}):null;
   document.getElementById('overlay').classList.add('open');
-  const title=document.getElementById('modal-title');
-  const body=document.getElementById('modal-body');
-  const today=new Date().toISOString().split('T')[0];
+  var title=document.getElementById('modal-title');
+  var body=document.getElementById('modal-body');
+  var today=new Date().toISOString().split('T')[0];
 
   if(type==='add'||type==='edit'){
     title.textContent=type==='add'?'新增品項':'編輯品項';
-    body.innerHTML=`
-      <div class="field"><label>名稱</label><input id="f-name" value="${item?.name||''}" placeholder="例：魚油 Omega-3"></div>
-      <div class="field-row">
-        <div class="field"><label>整瓶粒數</label><input id="f-total" type="number" value="${item?.totalPills||''}" placeholder="例：180"></div>
-        <div class="field"><label>每日用量（粒）</label><input id="f-dose" type="number" value="${item?.dailyDose||''}" placeholder="例：2"></div>
-      </div>
-      <div class="field-row">
-        <div class="field"><label>開瓶日期</label><input id="f-date" type="date" value="${item?.openDate||today}"></div>
-        <div class="field"><label>備用瓶數</label><input id="f-spare" type="number" min="0" value="${item?.spareBottles??0}" placeholder="0">
-          <div class="hint">尚未開瓶的庫存罐數</div>
-        </div>
-      </div>
-      <div class="modal-footer">
-        <button class="btn" onclick="closeModal()">取消</button>
-        <button class="btn btn-primary" onclick="saveItem('${type}')">儲存</button>
-      </div>`;
+    body.innerHTML=
+      '<div class="field"><label>名稱</label><input id="f-name" value="'+(item?item.name:'')+'" placeholder="例：魚油 Omega-3"></div>'
+      +'<div class="field-row">'
+      +'<div class="field"><label>整瓶粒數</label><input id="f-total" type="number" value="'+(item?item.totalPills:'')+'" placeholder="例：180"></div>'
+      +'<div class="field"><label>每日用量（粒）</label><input id="f-dose" type="number" value="'+(item?item.dailyDose:'')+'" placeholder="例：2"></div>'
+      +'</div>'
+      +'<div class="field-row">'
+      +'<div class="field"><label>開瓶日期</label><input id="f-date" type="date" value="'+(item?item.openDate:today)+'"></div>'
+      +'<div class="field"><label>備用瓶數</label><input id="f-spare" type="number" min="0" value="'+(item?item.spareBottles||0:0)+'">'
+      +'<div class="hint">尚未開瓶的庫存</div></div>'
+      +'</div>'
+      +'<div class="modal-footer"><button class="btn" onclick="closeModal()">取消</button><button class="btn btn-primary" onclick="saveItem(\''+type+'\')">儲存</button></div>';
   } else if(type==='adjust'){
     title.textContent='手動校正｜'+item.name;
-    body.innerHTML=`
-      <p style="font-size:13px;color:#666;margin-bottom:1rem">忘吃幾天請輸入正數，例如忘吃 2 天輸入 <b>+${item.dailyDose*2}</b>。</p>
-      <div class="field">
-        <label>調整粒數（正數加回，負數扣除）</label>
-        <input id="f-adj" type="number" placeholder="例：+${item.dailyDose}">
-        <div class="hint">目前累計校正：${item.adjustment||0} 粒　每日用量：${item.dailyDose} 粒</div>
-      </div>
-      <div class="modal-footer">
-        <button class="btn" onclick="closeModal()">取消</button>
-        <button class="btn btn-primary" onclick="applyAdj()">套用校正</button>
-      </div>`;
+    body.innerHTML=
+      '<p style="font-size:13px;color:#666;margin-bottom:1rem">忘吃幾天請輸入正數，例如忘吃 2 天輸入 <b>+'+(item.dailyDose*2)+'</b>。</p>'
+      +'<div class="field"><label>調整粒數（正數加回，負數扣除）</label>'
+      +'<input id="f-adj" type="number" placeholder="例：+'+item.dailyDose+'">'
+      +'<div class="hint">目前累計校正：'+(item.adjustment||0)+' 粒　每日用量：'+item.dailyDose+' 粒</div></div>'
+      +'<div class="modal-footer"><button class="btn" onclick="closeModal()">取消</button><button class="btn btn-primary" onclick="applyAdj()">套用校正</button></div>';
   } else if(type==='refill'){
-    const spare=item.spareBottles||0;
+    var spare=item.spareBottles||0;
     title.textContent='補瓶／更新庫存｜'+item.name;
-    body.innerHTML=`
-      <p style="font-size:13px;color:#666;margin-bottom:0.75rem">目前備用：<b>${spare} 瓶</b></p>
-      ${spare>0?`<button class="btn btn-primary" style="width:100%;margin-bottom:0.75rem" onclick="useSpare()">開一瓶備用庫存（剩 ${spare-1} 瓶）</button><hr class="divider">`:''}
-      <p style="font-size:13px;color:#666;margin-bottom:0.75rem">手動設定開瓶日期與備用瓶數：</p>
-      <div class="field-row">
-        <div class="field"><label>新開瓶日期</label><input id="f-refill" type="date" value="${today}"></div>
-        <div class="field"><label>更新備用瓶數</label><input id="f-spare2" type="number" min="0" value="${spare}"></div>
-      </div>
-      <div class="modal-footer">
-        <button class="btn" onclick="closeModal()">取消</button>
-        <button class="btn btn-primary" onclick="doRefill()">確認</button>
-      </div>`;
+    body.innerHTML=
+      '<p style="font-size:13px;color:#666;margin-bottom:0.75rem">目前備用：<b>'+spare+' 瓶</b></p>'
+      +(spare>0?'<button class="btn btn-primary" style="width:100%;margin-bottom:0.75rem" onclick="useSpare()">開一瓶備用庫存（剩 '+(spare-1)+' 瓶）</button><hr>':'')
+      +'<p style="font-size:13px;color:#666;margin-bottom:0.75rem">手動設定：</p>'
+      +'<div class="field-row">'
+      +'<div class="field"><label>新開瓶日期</label><input id="f-refill" type="date" value="'+today+'"></div>'
+      +'<div class="field"><label>更新備用瓶數</label><input id="f-spare2" type="number" min="0" value="'+spare+'"></div>'
+      +'</div>'
+      +'<div class="modal-footer"><button class="btn" onclick="closeModal()">取消</button><button class="btn btn-primary" onclick="doRefill()">確認</button></div>';
   }
 }
 
@@ -233,31 +208,31 @@ function closeModal(){ document.getElementById('overlay').classList.remove('open
 function overlayClick(e){ if(e.target===document.getElementById('overlay')) closeModal(); }
 
 function saveItem(type){
-  const name=document.getElementById('f-name').value.trim();
-  const total=Number(document.getElementById('f-total').value);
-  const dose=Number(document.getElementById('f-dose').value);
-  const date=document.getElementById('f-date').value;
-  const spare=Number(document.getElementById('f-spare').value)||0;
+  var name=document.getElementById('f-name').value.trim();
+  var total=Number(document.getElementById('f-total').value);
+  var dose=Number(document.getElementById('f-dose').value);
+  var date=document.getElementById('f-date').value;
+  var spare=Number(document.getElementById('f-spare').value)||0;
   if(!name||!total||!dose||!date){ alert('請填寫所有必填欄位'); return; }
   if(type==='add'){
-    data.items.push({id:Date.now().toString(), name, totalPills:total, dailyDose:dose, openDate:date, spareBottles:spare, adjustment:0});
+    data.items.push({id:Date.now().toString(), name:name, totalPills:total, dailyDose:dose, openDate:date, spareBottles:spare, adjustment:0});
   } else {
-    const i=data.items.find(x=>x.id===editId);
+    var i=data.items.find(function(x){return x.id===editId;});
     if(i){ i.name=name; i.totalPills=total; i.dailyDose=dose; i.openDate=date; i.spareBottles=spare; }
   }
   save(); render(); closeModal();
 }
 
 function applyAdj(){
-  const val=Number(document.getElementById('f-adj').value);
+  var val=Number(document.getElementById('f-adj').value);
   if(isNaN(val)||val===0){ alert('請輸入非零數字'); return; }
-  const i=data.items.find(x=>x.id===editId);
+  var i=data.items.find(function(x){return x.id===editId;});
   if(i){ i.adjustment=(i.adjustment||0)+val; }
   save(); render(); closeModal();
 }
 
 function useSpare(){
-  const i=data.items.find(x=>x.id===editId);
+  var i=data.items.find(function(x){return x.id===editId;});
   if(!i||!i.spareBottles) return;
   i.openDate=new Date().toISOString().split('T')[0];
   i.spareBottles=Math.max(0,i.spareBottles-1);
@@ -266,57 +241,53 @@ function useSpare(){
 }
 
 function doRefill(){
-  const date=document.getElementById('f-refill').value;
-  const spare=Number(document.getElementById('f-spare2').value)||0;
+  var date=document.getElementById('f-refill').value;
+  var spare=Number(document.getElementById('f-spare2').value)||0;
   if(!date){ alert('請選擇日期'); return; }
-  const i=data.items.find(x=>x.id===editId);
+  var i=data.items.find(function(x){return x.id===editId;});
   if(i){ i.openDate=date; i.spareBottles=spare; i.adjustment=0; }
   save(); render(); closeModal();
 }
 
 function exportICS(id){
-  const item=data.items.find(i=>i.id===id);
-  const days=calcTotalDays(item);
+  var item=data.items.find(function(i){return i.id===id;});
+  var days=calcTotalDays(item);
   if(days===null){ alert('請先完整填寫品項資料'); return; }
-  const th=data.alertDays||14;
-  const daysUntil=Math.max(0,days-th);
-  const remind=new Date();
-  remind.setDate(remind.getDate()+daysUntil);
-  const fmt=d=>d.toISOString().replace(/[-:]/g,'').split('.')[0]+'Z';
-  const ics=[
-    'BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//補貨提醒//TW',
-    'BEGIN:VEVENT',
-    `UID:${id}-${Date.now()}@supp-tracker`,
-    `DTSTART:${fmt(remind)}`,`DTEND:${fmt(new Date(remind.getTime()+3600000))}`,
-    `SUMMARY:補貨提醒：${item.name}`,
-    `DESCRIPTION:${item.name} 剩餘約 ${th} 天份，記得訂購補貨。`,
-    'BEGIN:VALARM','TRIGGER:-PT0M','ACTION:DISPLAY',`DESCRIPTION:補貨提醒：${item.name}`,'END:VALARM',
-    'END:VEVENT','END:VCALENDAR'
-  ].join('\r\n');
-  const a=document.createElement('a');
+  var th=data.alertDays||14;
+  var remind=new Date();
+  remind.setDate(remind.getDate()+Math.max(0,days-th));
+  var fmt=function(d){return d.toISOString().replace(/[-:]/g,'').split('.')[0]+'Z';};
+  var ics='BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//補貨提醒//TW\r\nBEGIN:VEVENT\r\n'
+    +'UID:'+id+'-'+Date.now()+'@supp-tracker\r\n'
+    +'DTSTART:'+fmt(remind)+'\r\nDTEND:'+fmt(new Date(remind.getTime()+3600000))+'\r\n'
+    +'SUMMARY:補貨提醒：'+item.name+'\r\n'
+    +'DESCRIPTION:'+item.name+' 剩餘約 '+th+' 天份，記得訂購補貨。\r\n'
+    +'BEGIN:VALARM\r\nTRIGGER:-PT0M\r\nACTION:DISPLAY\r\nDESCRIPTION:補貨提醒\r\nEND:VALARM\r\n'
+    +'END:VEVENT\r\nEND:VCALENDAR';
+  var a=document.createElement('a');
   a.href=URL.createObjectURL(new Blob([ics],{type:'text/calendar'}));
-  a.download=`補貨提醒-${item.name}.ics`;
+  a.download='補貨提醒-'+item.name+'.ics';
   a.click();
 }
 
 function exportJSON(){
-  const a=document.createElement('a');
+  var a=document.createElement('a');
   a.href=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}));
-  a.download='保健食品補貨提醒備份_'+new Date().toISOString().split('T')[0]+'.json';
+  a.download='保健食品備份_'+new Date().toISOString().split('T')[0]+'.json';
   a.click();
 }
 
 function importJSON(e){
-  const file=e.target.files[0]; if(!file) return;
-  const r=new FileReader();
-  r.onload=ev=>{
+  var file=e.target.files[0]; if(!file) return;
+  var r=new FileReader();
+  r.onload=function(ev){
     try{
-      const d=JSON.parse(ev.target.result);
+      var d=JSON.parse(ev.target.result);
       if(!d.items) throw new Error();
-      if(!confirm(`匯入後將覆蓋目前所有資料（共 ${d.items.length} 項），確定繼續？`)) return;
+      if(!confirm('匯入後將覆蓋目前所有資料（共 '+d.items.length+' 項），確定繼續？')) return;
       data=d; save(); render();
       document.getElementById('threshold').value=data.alertDays||14;
-    } catch{ alert('檔案格式錯誤，請使用本工具匯出的 JSON 檔案'); }
+    } catch(err){ alert('檔案格式錯誤，請使用本工具匯出的 JSON 檔案'); }
   };
   r.readAsText(file);
   e.target.value='';
